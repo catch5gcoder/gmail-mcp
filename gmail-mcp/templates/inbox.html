@@ -206,6 +206,21 @@
   .btn-send:hover { background: #1557b0; }
   .btn-send:disabled { background: #dadce0; cursor: default; }
 
+  /* ── New-email flash animation ─────────────── */
+  @keyframes newFlash {
+    0%   { background: #e8f5e9; }
+    100% { background: transparent; }
+  }
+  .email-item.new-arrived { animation: newFlash 2.5s ease-out forwards; }
+
+  /* ── SSE status dot ─────────────────────────── */
+  #sseStatus {
+    width: 8px; height: 8px; border-radius: 50%; background: #ccc;
+    flex-shrink: 0; margin-left: 8px; title: 'Live updates';
+  }
+  #sseStatus.connected { background: #1e8e3e; }
+  #sseStatus.error     { background: #d93025; }
+
   /* ── Toast ───────────────────────────────── */
   #toast {
     position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
@@ -232,6 +247,7 @@
     </form>
   </div>
   <div class="user-badge">{{ user_email }}</div>
+  <div id="sseStatus" title="Live updates: connecting…"></div>
 </header>
 
 <div class="layout">
@@ -639,6 +655,108 @@ function esc(s) {
 // Auto-open first email
 const first = document.querySelector('.email-item');
 if (first) openEmail(first);
+
+/* ── SSE push notifications ─────────────────── */
+
+// Request browser notification permission early
+if ('Notification' in window && Notification.permission === 'default') {
+  Notification.requestPermission();
+}
+
+function jsFmtFrom(s) {
+  const m = s.match(/^"?([^"<]+)"?\s*</);
+  return m ? m[1].trim() : s;
+}
+
+function jsFmtDate(s) {
+  try {
+    const d = new Date(s);
+    const now = new Date();
+    if (isNaN(d)) return s;
+    if (d.toDateString() === now.toDateString())
+      return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    if (d.getFullYear() === now.getFullYear())
+      return d.toLocaleDateString([], {month: 'short', day: 'numeric'});
+    return d.toLocaleDateString([], {month: 'short', day: 'numeric', year: 'numeric'});
+  } catch(e) { return s; }
+}
+
+function prependEmails(emails) {
+  const listEl  = document.querySelector('.email-list');
+  const header  = listEl.querySelector('.email-list-header');
+  const noMail  = listEl.querySelector('.no-emails');
+  if (noMail) noMail.remove();
+
+  // De-duplicate: skip IDs already in the list
+  const existing = new Set([...listEl.querySelectorAll('.email-item')]
+    .map(el => el.dataset.id));
+
+  [...emails].reverse().forEach(email => {
+    if (existing.has(email.id)) return;
+    const unread = (email.labelIds || []).includes('UNREAD');
+    const el = document.createElement('div');
+    el.className = `email-item${unread ? ' unread' : ''} new-arrived`;
+    el.setAttribute('onclick', 'openEmail(this)');
+    el.dataset.id      = email.id;
+    el.dataset.subject = email.subject   || '';
+    el.dataset.from    = email.from      || '';
+    el.dataset.to      = email.to        || '';
+    el.dataset.date    = email.date      || '';
+    el.dataset.labels  = (email.labelIds || []).join(',');
+    el.innerHTML =
+      `<div class="ei-row1">
+        <span class="ei-from">
+          ${unread ? '<span class="unread-dot"></span>' : ''}
+          ${esc(jsFmtFrom(email.from || ''))}
+        </span>
+        <span class="ei-date">${esc(jsFmtDate(email.date || ''))}</span>
+      </div>
+      <div class="ei-subject">${esc(email.subject || '')}</div>
+      <div class="ei-snippet">${esc(email.snippet  || '')}</div>`;
+    header.insertAdjacentElement('afterend', el);
+  });
+
+  // Update count in header
+  const total = listEl.querySelectorAll('.email-item').length;
+  header.innerHTML = header.innerHTML.replace(/\d+ messages/, `${total} messages`);
+}
+
+function sendBrowserNotification(emails, count) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const first  = emails[0];
+  const title  = count === 1 ? `New email from ${jsFmtFrom(first.from || '')}` : `${count} new emails`;
+  const body   = count === 1 ? (first.subject || '') : emails.map(e => e.subject).join('\n');
+  const n = new Notification(title, { body, icon: '' });
+  setTimeout(() => n.close(), 6000);
+  n.onclick = () => { window.focus(); n.close(); };
+}
+
+// Connect SSE stream
+(function connectSSE() {
+  const dot = document.getElementById('sseStatus');
+  const es  = new EventSource('/stream');
+
+  es.addEventListener('connected', () => {
+    dot.className = 'connected';
+    dot.title = 'Live updates: connected';
+  });
+
+  es.addEventListener('new_emails', e => {
+    const data = JSON.parse(e.data);
+    prependEmails(data.emails || []);
+    showToast(
+      `${data.count} new email${data.count > 1 ? 's' : ''} arrived`,
+      'success'
+    );
+    sendBrowserNotification(data.emails || [], data.count);
+  });
+
+  es.onerror = () => {
+    dot.className = 'error';
+    dot.title = 'Live updates: reconnecting…';
+    // EventSource auto-reconnects — status dot updates on next 'connected' event
+  };
+})();
 </script>
 </body>
 </html>

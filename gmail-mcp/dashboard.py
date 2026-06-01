@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Gmail browser dashboard — Flask web UI over gmail_client.py."""
 
+import json
+import queue
 import re
 import ssl
 import sys
@@ -21,6 +23,13 @@ _profile = None
 _email_cache: dict = {}          # {message_id: (timestamp, email_dict)}
 _cache_lock = threading.Lock()   # protects concurrent reads/writes to _email_cache
 CACHE_TTL = 300
+
+# SSE push notification state
+_subscribers: list[queue.Queue] = []   # one Queue per connected browser tab
+_sub_lock = threading.Lock()
+_poller_started = False
+_poller_lock = threading.Lock()
+POLL_INTERVAL = 30  # seconds between Gmail inbox checks
 
 PRIORITY_LABELS = ["INBOX", "STARRED", "SENT", "DRAFTS", "SPAM", "TRASH"]
 LABEL_ICONS = {
@@ -73,6 +82,93 @@ def get_email_cached(message_id: str) -> dict:
                 _service = None   # force a fresh connection next attempt
                 continue
             raise
+
+
+def _broadcast(event: dict) -> None:
+    """Push an SSE event to every connected browser tab."""
+    with _sub_lock:
+        dead = []
+        for q in _subscribers:
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                dead.append(q)
+        for q in dead:
+            _subscribers.remove(q)
+
+
+def _poll_for_new_emails() -> None:
+    """Background thread: check inbox every POLL_INTERVAL seconds and push new arrivals."""
+    global _service
+    last_ids: set[str] = set()
+    initialized = False
+
+    while True:
+        try:
+            emails = gmail.list_emails(get_service(), label_ids=["INBOX"], max_results=15)
+            current_ids = {e["id"] for e in emails}
+
+            if initialized:
+                new_ids = current_ids - last_ids
+                if new_ids:
+                    new_emails = [e for e in emails if e["id"] in new_ids]
+                    _broadcast({"type": "new_emails", "count": len(new_emails), "emails": new_emails})
+
+            last_ids = current_ids
+            initialized = True
+        except Exception as e:
+            if _is_transient(e):
+                _service = None  # force reconnect next iteration
+
+        time.sleep(POLL_INTERVAL)
+
+
+@app.before_request
+def _start_poller_once():
+    """Start the background polling thread on the very first request."""
+    global _poller_started
+    if not _poller_started:
+        with _poller_lock:
+            if not _poller_started:
+                _poller_started = True
+                t = threading.Thread(target=_poll_for_new_emails, daemon=True, name="gmail-poller")
+                t.start()
+
+
+@app.route("/stream")
+def stream():
+    """SSE endpoint — browser holds this connection open to receive push events."""
+    def generate():
+        q: queue.Queue = queue.Queue(maxsize=100)
+        with _sub_lock:
+            _subscribers.append(q)
+        try:
+            yield "event: connected\ndata: {}\n\n"
+            while True:
+                try:
+                    event = q.get(timeout=25)
+                    payload = json.dumps(event, ensure_ascii=False)
+                    yield f"event: {event['type']}\ndata: {payload}\n\n"
+                except queue.Empty:
+                    yield ": keepalive\n\n"   # SSE comment prevents timeout
+        except GeneratorExit:
+            pass
+        finally:
+            with _sub_lock:
+                try:
+                    _subscribers.remove(q)
+                except ValueError:
+                    pass
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 def _format_from(from_str: str) -> str:
