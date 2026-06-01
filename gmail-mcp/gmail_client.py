@@ -40,17 +40,41 @@ def get_service():
     return build("gmail", "v1", credentials=creds)
 
 
+def _b64decode(data: str) -> bytes:
+    """Base64-decode a Gmail API payload string with correct padding."""
+    padding = (4 - len(data) % 4) % 4
+    return base64.urlsafe_b64decode(data + "=" * padding)
+
+
 def _decode_body(payload: dict) -> str:
-    """Recursively extract plain-text body from a message payload."""
     mime = payload.get("mimeType", "")
     if mime == "text/plain":
         data = payload.get("body", {}).get("data", "")
-        return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace") if data else ""
+        try:
+            return _b64decode(data).decode("utf-8", errors="replace") if data else ""
+        except Exception:
+            return ""
     if mime.startswith("multipart/"):
         for part in payload.get("parts", []):
             text = _decode_body(part)
             if text:
                 return text
+    return ""
+
+
+def _decode_html_body(payload: dict) -> str:
+    mime = payload.get("mimeType", "")
+    if mime == "text/html":
+        data = payload.get("body", {}).get("data", "")
+        try:
+            return _b64decode(data).decode("utf-8", errors="replace") if data else ""
+        except Exception:
+            return ""
+    if mime.startswith("multipart/"):
+        for part in payload.get("parts", []):
+            html = _decode_html_body(part)
+            if html:
+                return html
     return ""
 
 
@@ -77,8 +101,32 @@ def list_emails(service, label_ids: list[str] | None = None, max_results: int = 
             "to": headers.get("To", ""),
             "date": headers.get("Date", ""),
             "snippet": meta.get("snippet", ""),
+            "labelIds": meta.get("labelIds", []),
         })
     return results
+
+
+def _extract_attachments(payload: dict) -> list[dict]:
+    results = []
+    filename = payload.get("filename", "")
+    body = payload.get("body", {})
+    if filename and body.get("attachmentId"):
+        results.append({
+            "filename": filename,
+            "mimeType": payload.get("mimeType", "application/octet-stream"),
+            "size": body.get("size", 0),
+        })
+    for part in payload.get("parts", []):
+        results.extend(_extract_attachments(part))
+    return results
+
+
+def get_profile(service) -> dict:
+    profile = service.users().getProfile(userId="me").execute()
+    return {
+        "email": profile.get("emailAddress", ""),
+        "name": profile.get("displayName", ""),
+    }
 
 
 def get_email(service, message_id: str) -> dict:
@@ -86,6 +134,7 @@ def get_email(service, message_id: str) -> dict:
     payload = msg.get("payload", {})
     headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
     body = _decode_body(payload)
+    html_body = _decode_html_body(payload)
     return {
         "id": msg["id"],
         "threadId": msg.get("threadId"),
@@ -95,8 +144,10 @@ def get_email(service, message_id: str) -> dict:
         "cc": headers.get("Cc", ""),
         "date": headers.get("Date", ""),
         "body": body,
+        "html_body": html_body,
         "snippet": msg.get("snippet", ""),
         "labelIds": msg.get("labelIds", []),
+        "attachments": _extract_attachments(payload),
     }
 
 

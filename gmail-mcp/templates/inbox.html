@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gmail Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Google Sans', Roboto, Arial, sans-serif;
+    height: 100vh; display: flex; flex-direction: column;
+    background: #f6f8fc; color: #202124; overflow: hidden;
+  }
+
+  /* ── Header ─────────────────────────────── */
+  header {
+    display: flex; align-items: center;
+    padding: 8px 24px; background: #f6f8fc;
+    border-bottom: 1px solid #e0e0e0; gap: 24px; height: 64px; flex-shrink: 0;
+  }
+  .logo { font-size: 24px; font-weight: 400; color: #5f6368; letter-spacing: -0.5px; }
+  .logo b { color: #EA4335; font-weight: 700; }
+  .search-wrap { flex: 1; max-width: 680px; }
+  .search-wrap form {
+    display: flex; align-items: center;
+    background: #eaf1fb; border-radius: 24px; padding: 0 16px;
+  }
+  .search-wrap input {
+    flex: 1; border: none; background: transparent;
+    padding: 10px 8px; font-size: 15px; outline: none; color: #202124;
+  }
+  .search-wrap button {
+    border: none; background: transparent; cursor: pointer;
+    color: #5f6368; font-size: 18px; padding: 4px;
+  }
+  .search-wrap form:focus-within { background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+  .user-badge {
+    margin-left: auto; font-size: 13px; color: #5f6368;
+    background: #e8eaed; border-radius: 20px; padding: 6px 14px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px;
+  }
+
+  /* ── Layout ─────────────────────────────── */
+  .layout { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Sidebar ─────────────────────────────── */
+  .sidebar { width: 220px; flex-shrink: 0; padding: 8px 0; overflow-y: auto; }
+  .sidebar a {
+    display: flex; align-items: center; gap: 12px;
+    padding: 6px 24px; border-radius: 0 16px 16px 0; margin-right: 16px;
+    font-size: 14px; color: #202124; text-decoration: none;
+    min-height: 32px; transition: background .1s;
+  }
+  .sidebar a:hover { background: #e8eaed; }
+  .sidebar a.active { background: #fce8e6; font-weight: 600; }
+  .sidebar-divider { margin: 8px 16px; border: none; border-top: 1px solid #e0e0e0; }
+
+  /* ── Email List ─────────────────────────── */
+  .email-list {
+    width: 360px; flex-shrink: 0;
+    border-right: 1px solid #e0e0e0; overflow-y: auto; background: #fff;
+  }
+  .email-list-header {
+    padding: 10px 16px; border-bottom: 1px solid #f1f3f4;
+    font-size: 12px; color: #5f6368; font-weight: 500;
+    position: sticky; top: 0; background: #fff; z-index: 1;
+  }
+  .email-item {
+    padding: 10px 16px; border-bottom: 1px solid #f1f3f4;
+    cursor: pointer; transition: background .1s;
+  }
+  .email-item:hover { background: #f2f6fc; }
+  .email-item.active { background: #e8f0fe; border-left: 3px solid #1a73e8; padding-left: 13px; }
+  .email-item.unread .ei-from,
+  .email-item.unread .ei-subject { font-weight: 700; color: #202124; }
+  .ei-row1 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+  .ei-from { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .ei-date { font-size: 12px; color: #5f6368; flex-shrink: 0; }
+  .ei-subject { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 2px; }
+  .ei-snippet { font-size: 12px; color: #5f6368; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .unread-dot { display: inline-block; width: 8px; height: 8px; background: #1a73e8; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .no-emails { padding: 48px 24px; text-align: center; color: #5f6368; font-size: 15px; }
+
+  /* ── Email Detail ────────────────────────── */
+  .email-detail { flex: 1; display: flex; flex-direction: column; background: #fff; overflow: hidden; min-width: 0; }
+  .detail-empty {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; color: #5f6368; gap: 12px;
+  }
+  .detail-empty .empty-icon { font-size: 56px; opacity: .3; }
+
+  #detailContent { display: none; flex-direction: column; height: 100%; }
+  .detail-header { padding: 20px 28px 14px; border-bottom: 1px solid #e0e0e0; flex-shrink: 0; }
+  .detail-subject { font-size: 20px; font-weight: 400; margin-bottom: 10px; line-height: 1.3; }
+  .detail-meta { font-size: 13px; color: #5f6368; line-height: 1.8; }
+  .detail-meta strong { color: #202124; }
+
+  /* Attachment chips */
+  .attachment-area { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; min-height: 0; }
+  .att-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; background: #f8f9fa; border: 1px solid #dadce0;
+    border-radius: 8px; font-size: 12px; color: #5f6368;
+  }
+  .att-chip .att-name { color: #202124; font-weight: 500; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .att-notice {
+    font-size: 12px; color: #f9ab00; background: #fef7e0;
+    border: 1px solid #fde293; border-radius: 6px; padding: 4px 10px;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+
+  /* Action buttons */
+  .action-bar { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .action-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 16px; border: 1px solid #dadce0; border-radius: 4px;
+    background: #fff; color: #444; font-size: 13px; cursor: pointer;
+    font-family: inherit; transition: background .1s, box-shadow .1s;
+  }
+  .action-btn:hover { background: #f1f3f4; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+
+  /* Body / iframe area */
+  .detail-body-area { position: relative; flex: 1; overflow: hidden; }
+  #detailFrame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
+
+  /* ── Compose Panel ───────────────────────── */
+  #composePanel {
+    display: none; position: absolute; inset: 0;
+    flex-direction: column; background: #fff; z-index: 20;
+    border-top: 3px solid #1a73e8;
+  }
+  .compose-titlebar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px; background: #404040; color: #fff;
+    font-size: 14px; font-weight: 500; flex-shrink: 0;
+  }
+  .compose-titlebar button {
+    background: transparent; border: none; color: #ccc;
+    font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px;
+  }
+  .compose-titlebar button:hover { color: #fff; }
+  .compose-fields { flex-shrink: 0; border-bottom: 1px solid #e0e0e0; }
+  .compose-row {
+    display: flex; align-items: center;
+    padding: 6px 20px; border-bottom: 1px solid #f1f3f4;
+  }
+  .compose-row label { width: 64px; font-size: 13px; color: #5f6368; flex-shrink: 0; }
+  .compose-row input {
+    flex: 1; border: none; outline: none;
+    font-size: 14px; color: #202124; padding: 3px 0; font-family: inherit;
+  }
+  .compose-body-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Rich text toolbar */
+  .compose-toolbar {
+    display: flex; align-items: center; gap: 2px; flex-shrink: 0;
+    padding: 5px 14px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0;
+    flex-wrap: wrap;
+  }
+  .compose-toolbar button {
+    border: none; background: transparent; padding: 4px 7px; border-radius: 3px;
+    cursor: pointer; font-size: 13px; color: #444; font-family: inherit;
+    line-height: 1;
+  }
+  .compose-toolbar button:hover { background: #e8eaed; }
+  .compose-toolbar button.active { background: #d2e3fc; color: #1a73e8; }
+  .compose-toolbar .tb-sep { width: 1px; height: 18px; background: #dadce0; margin: 0 3px; flex-shrink: 0; }
+  .compose-toolbar select {
+    border: 1px solid #dadce0; border-radius: 3px; padding: 3px 6px;
+    font-size: 12px; cursor: pointer; background: #fff; color: #444;
+  }
+
+  /* Contenteditable rich editor */
+  .compose-editor {
+    flex: 1; padding: 14px 20px; font-size: 14px; font-family: Arial, sans-serif;
+    color: #202124; line-height: 1.6; outline: none; overflow-y: auto;
+    min-height: 80px;
+  }
+  .compose-editor:empty::before {
+    content: attr(data-placeholder); color: #9aa0a6; pointer-events: none;
+  }
+  .compose-editor a { color: #1a73e8; }
+  .compose-editor blockquote { border-left: 3px solid #dadce0; margin: 4px 0; padding-left: 12px; color: #5f6368; }
+  .compose-editor ul, .compose-editor ol { padding-left: 20px; }
+  .compose-quote-wrap { border-top: 1px solid #e8eaed; flex-shrink: 0; max-height: 180px; overflow-y: auto; background: #fafafa; }
+  .compose-quote-header { font-size: 12px; color: #5f6368; padding: 8px 20px 4px; }
+  .compose-quote-body {
+    font-size: 13px; color: #5f6368; line-height: 1.5;
+    margin: 0 20px 10px; padding-left: 12px;
+    overflow-wrap: break-word; overflow: hidden;
+  }
+  .compose-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px; border-top: 1px solid #e0e0e0; background: #fff; flex-shrink: 0;
+  }
+  .btn-cancel {
+    background: transparent; border: 1px solid #dadce0; color: #5f6368;
+    padding: 8px 20px; border-radius: 4px; cursor: pointer; font-size: 14px; font-family: inherit;
+  }
+  .btn-cancel:hover { background: #f1f3f4; }
+  .btn-send {
+    background: #1a73e8; color: #fff; border: none;
+    padding: 8px 24px; border-radius: 4px; cursor: pointer;
+    font-size: 14px; font-weight: 500; font-family: inherit;
+  }
+  .btn-send:hover { background: #1557b0; }
+  .btn-send:disabled { background: #dadce0; cursor: default; }
+
+  /* ── Toast ───────────────────────────────── */
+  #toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    background: #323232; color: #fff; padding: 12px 28px; border-radius: 4px;
+    font-size: 14px; z-index: 1000; display: none; pointer-events: none;
+    box-shadow: 0 3px 8px rgba(0,0,0,.3);
+  }
+  #toast.success { background: #1e8e3e; }
+  #toast.error   { background: #d93025; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">G<b>m</b>ail</div>
+  <div class="search-wrap">
+    <form method="get" action="/">
+      {% if current_label != 'INBOX' %}
+        <input type="hidden" name="label" value="{{ current_label }}">
+      {% endif %}
+      <input type="text" name="q" placeholder="Search mail" value="{{ query }}" autocomplete="off">
+      <button type="submit">🔍</button>
+    </form>
+  </div>
+  <div class="user-badge">{{ user_email }}</div>
+</header>
+
+<div class="layout">
+
+  <!-- ── Sidebar ── -->
+  <nav class="sidebar">
+    {% for label in labels %}
+      {% if label.id in ['INBOX','STARRED','SENT','DRAFTS'] %}
+        <a href="/?label={{ label.id }}"
+           class="{% if label.id == current_label and not query %}active{% endif %}">
+          {{ label_icons.get(label.id, '🏷️') }}&nbsp;
+          {{ label.name.replace('CATEGORY_', '').title() }}
+        </a>
+      {% endif %}
+    {% endfor %}
+    <hr class="sidebar-divider">
+    {% for label in labels %}
+      {% if label.id in ['SPAM','TRASH'] %}
+        <a href="/?label={{ label.id }}"
+           class="{% if label.id == current_label and not query %}active{% endif %}">
+          {{ label_icons.get(label.id, '🏷️') }}&nbsp;
+          {{ label.name.replace('CATEGORY_', '').title() }}
+        </a>
+      {% endif %}
+    {% endfor %}
+    {% set user_labels = labels | selectattr('type', 'equalto', 'user') | list %}
+    {% if user_labels %}
+      <hr class="sidebar-divider">
+      {% for label in user_labels %}
+        <a href="/?label={{ label.id }}"
+           class="{% if label.id == current_label and not query %}active{% endif %}">
+          🏷️&nbsp;{{ label.name }}
+        </a>
+      {% endfor %}
+    {% endif %}
+  </nav>
+
+  <!-- ── Email List ── -->
+  <div class="email-list">
+    <div class="email-list-header">
+      {% if query %}
+        Results for "<strong>{{ query }}</strong>" — {{ emails|length }}
+      {% else %}
+        {{ current_label.replace('CATEGORY_', '').title() }} — {{ emails|length }} messages
+      {% endif %}
+    </div>
+    {% if emails %}
+      {% for email in emails %}
+        {% set unread = 'UNREAD' in email.get('labelIds', []) %}
+        <div class="email-item {% if unread %}unread{% endif %}"
+             onclick="openEmail(this)"
+             data-id="{{ email.id }}"
+             data-subject="{{ email.subject | e }}"
+             data-from="{{ email.from | e }}"
+             data-to="{{ email.to | e }}"
+             data-date="{{ email.date | e }}"
+             data-labels="{{ email.get('labelIds', []) | join(',') }}">
+          <div class="ei-row1">
+            <span class="ei-from">
+              {% if unread %}<span class="unread-dot"></span>{% endif %}
+              {{ email.from | format_from }}
+            </span>
+            <span class="ei-date">{{ email.date | format_date }}</span>
+          </div>
+          <div class="ei-subject">{{ email.subject }}</div>
+          <div class="ei-snippet">{{ email.snippet }}</div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="no-emails">📭 No emails here.</div>
+    {% endif %}
+  </div>
+
+  <!-- ── Email Detail ── -->
+  <div class="email-detail">
+    <div class="detail-empty" id="emptyState">
+      <div class="empty-icon">✉️</div>
+      <p>Select an email to read</p>
+    </div>
+
+    <div id="detailContent">
+      <div class="detail-header">
+        <div class="detail-subject" id="detailSubject"></div>
+        <div class="detail-meta" id="detailMeta"></div>
+
+        <!-- Attachment notification area -->
+        <div class="attachment-area" id="attachmentArea"></div>
+
+        <!-- Action buttons -->
+        <div class="action-bar">
+          <button class="action-btn" onclick="compose('reply')">↩ Reply</button>
+          <button class="action-btn" onclick="compose('replyall')">↩↩ Reply All</button>
+          <button class="action-btn" onclick="compose('forward')">↪ Forward</button>
+          <button class="action-btn" onclick="printEmail()" title="Print email">🖨 Print</button>
+        </div>
+      </div>
+
+      <!-- Body iframe + compose overlay share the same space -->
+      <div class="detail-body-area">
+        <iframe id="detailFrame"
+                sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+                referrerpolicy="no-referrer"></iframe>
+
+        <!-- Compose Panel (overlays iframe) -->
+        <div id="composePanel">
+          <div class="compose-titlebar">
+            <span id="composeTitle">Reply</span>
+            <button onclick="cancelCompose()" title="Discard">✕</button>
+          </div>
+          <div class="compose-fields">
+            <div class="compose-row">
+              <label>To</label>
+              <input id="composeTo" type="text" placeholder="Recipients">
+            </div>
+            <div class="compose-row" id="ccRow">
+              <label>CC</label>
+              <input id="composeCC" type="text" placeholder="CC recipients">
+            </div>
+            <div class="compose-row">
+              <label>Subject</label>
+              <input id="composeSubject" type="text">
+            </div>
+          </div>
+          <div class="compose-body-wrap">
+            <!-- Rich text toolbar -->
+            <div class="compose-toolbar" id="composeToolbar">
+              <button onmousedown="event.preventDefault()" onclick="fmt('bold')"         title="Bold"><b>B</b></button>
+              <button onmousedown="event.preventDefault()" onclick="fmt('italic')"       title="Italic"><i>I</i></button>
+              <button onmousedown="event.preventDefault()" onclick="fmt('underline')"    title="Underline"><u>U</u></button>
+              <button onmousedown="event.preventDefault()" onclick="fmt('strikeThrough')" title="Strikethrough"><s>S</s></button>
+              <span class="tb-sep"></span>
+              <button onmousedown="event.preventDefault()" onclick="fmt('insertUnorderedList')" title="Bullet list">&#8226; List</button>
+              <button onmousedown="event.preventDefault()" onclick="fmt('insertOrderedList')"   title="Numbered list">1. List</button>
+              <span class="tb-sep"></span>
+              <button onmousedown="event.preventDefault()" onclick="insertLink()"        title="Insert link">🔗 Link</button>
+              <span class="tb-sep"></span>
+              <select onmousedown="event.stopPropagation()" onchange="fmtBlock(this)">
+                <option value="">Normal</option>
+                <option value="h2">Heading</option>
+                <option value="blockquote">Blockquote</option>
+                <option value="pre">Code</option>
+              </select>
+              <span class="tb-sep"></span>
+              <button onmousedown="event.preventDefault()" onclick="fmt('removeFormat')" title="Clear formatting">✕ Clear</button>
+            </div>
+
+            <!-- Contenteditable rich editor -->
+            <div id="composeEditor" class="compose-editor"
+                 contenteditable="true"
+                 data-placeholder="Write your message…"
+                 spellcheck="true"></div>
+
+            <div class="compose-quote-wrap" id="composeQuoteWrap">
+              <div class="compose-quote-header" id="composeQuoteHeader"></div>
+              <div class="compose-quote-body" id="composeQuoteBody"></div>
+            </div>
+          </div>
+          <div class="compose-footer">
+            <button class="btn-cancel" onclick="cancelCompose()">Discard</button>
+            <button class="btn-send" id="sendBtn" onclick="sendEmail()">Send ✉</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+const USER_EMAIL = {{ user_email | tojson }};
+
+let currentId      = null;
+let currentData    = null;   // filled by /email/<id>/detail
+let detailPromise  = null;   // pending fetch so compose() can await it
+
+/* ── Open email ─────────────────────── */
+function openEmail(el) {
+  document.querySelectorAll('.email-item').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  el.classList.remove('unread');
+  const dot = el.querySelector('.unread-dot');
+  if (dot) dot.remove();
+
+  currentId   = el.dataset.id;
+  currentData = null;
+
+  // Populate header from data attrs immediately (instant)
+  document.getElementById('detailSubject').textContent = el.dataset.subject;
+  document.getElementById('detailMeta').innerHTML =
+    `<strong>From:</strong> ${esc(el.dataset.from)}<br>` +
+    `<strong>To:</strong>   ${esc(el.dataset.to)}<br>` +
+    `<strong>Date:</strong> ${esc(el.dataset.date)}`;
+  document.getElementById('attachmentArea').innerHTML =
+    '<span style="font-size:12px;color:#aaa">Loading attachments…</span>';
+
+  document.getElementById('emptyState').style.display    = 'none';
+  document.getElementById('detailContent').style.display = 'flex';
+  cancelCompose();
+
+  document.getElementById('detailFrame').src = `/email/${currentId}/body`;
+
+  // Fetch full detail (attachments + compose data) — store promise so compose() can await it
+  detailPromise = fetch(`/email/${currentId}/detail`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) throw new Error(data.error);
+      currentData = data;
+      renderAttachments(data.attachments || []);
+      return data;
+    })
+    .catch(err => {
+      document.getElementById('attachmentArea').innerHTML = '';
+      console.error('Detail fetch failed:', err);
+    });
+}
+
+/* ── Attachments ────────────────────── */
+function renderAttachments(attachments) {
+  const area = document.getElementById('attachmentArea');
+  if (!attachments.length) { area.innerHTML = ''; return; }
+  area.innerHTML =
+    `<span class="att-notice">📎 ${attachments.length} attachment${attachments.length > 1 ? 's' : ''} — preview not available, open in Gmail to download</span> ` +
+    attachments.map(a =>
+      `<span class="att-chip">
+        <span>${fileIcon(a.mimeType)}</span>
+        <span class="att-name" title="${esc(a.filename)}">${esc(a.filename)}</span>
+        <span>(${a.size_str})</span>
+      </span>`
+    ).join('');
+}
+
+function fileIcon(mime) {
+  if (!mime) return '📎';
+  if (mime.startsWith('image/'))   return '🖼️';
+  if (mime.includes('pdf'))        return '📄';
+  if (mime.includes('zip') || mime.includes('rar') || mime.includes('tar')) return '🗜️';
+  if (mime.includes('word') || mime.includes('document')) return '📝';
+  if (mime.includes('sheet') || mime.includes('excel'))   return '📊';
+  if (mime.includes('presentation') || mime.includes('powerpoint')) return '📑';
+  if (mime.startsWith('audio/'))   return '🎵';
+  if (mime.startsWith('video/'))   return '🎥';
+  return '📎';
+}
+
+/* ── Rich text formatting ───────────── */
+function fmt(cmd, value) {
+  document.getElementById('composeEditor').focus();
+  document.execCommand(cmd, false, value || null);
+}
+
+function fmtBlock(sel) {
+  document.getElementById('composeEditor').focus();
+  document.execCommand('formatBlock', false, sel.value || 'div');
+  sel.selectedIndex = 0;
+}
+
+function insertLink() {
+  const url = prompt('Enter URL (include https://):');
+  if (url) {
+    document.getElementById('composeEditor').focus();
+    document.execCommand('createLink', false, url);
+    // Ensure links open in new tab
+    document.querySelectorAll('#composeEditor a').forEach(a => a.target = '_blank');
+  }
+}
+
+/* ── Compose ────────────────────────── */
+async function compose(type) {
+  if (!currentData) {
+    if (detailPromise) {
+      showToast('Loading email data…', '');
+      try { await detailPromise; } catch(e) {}
+    }
+    if (!currentData) {
+      showToast('Could not load email data. Try again.', 'error');
+      return;
+    }
+  }
+
+  const origSubject = currentData.subject  || '';
+  const origFrom    = currentData.from     || '';
+  const origTo      = currentData.to       || '';
+  const origCC      = currentData.cc       || '';
+  const origDate    = currentData.date     || '';
+  const origHtml    = currentData.html_body ||
+    `<pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:13px">${esc(currentData.body || '')}</pre>`;
+
+  let to = '', cc = '', subject = '', title = '';
+
+  if (type === 'reply') {
+    title   = 'Reply';
+    to      = origFrom;
+    subject = /^re:/i.test(origSubject) ? origSubject : 'Re: ' + origSubject;
+    document.getElementById('ccRow').style.display = 'none';
+  } else if (type === 'replyall') {
+    title   = 'Reply All';
+    to      = origFrom;
+    subject = /^re:/i.test(origSubject) ? origSubject : 'Re: ' + origSubject;
+    const allRecip = (origTo + ',' + origCC).split(',')
+      .map(s => s.trim()).filter(s => s && !s.toLowerCase().includes(USER_EMAIL.toLowerCase()));
+    cc = allRecip.join(', ');
+    document.getElementById('ccRow').style.display = 'flex';
+  } else if (type === 'forward') {
+    title   = 'Forward';
+    to      = '';
+    subject = /^fwd:/i.test(origSubject) ? origSubject : 'Fwd: ' + origSubject;
+    document.getElementById('ccRow').style.display = 'none';
+  }
+
+  document.getElementById('composeTitle').textContent  = title;
+  document.getElementById('composeTo').value           = to;
+  document.getElementById('composeCC').value           = cc;
+  document.getElementById('composeSubject').value      = subject;
+  document.getElementById('composeEditor').innerHTML   = '';  // clear editor
+  document.getElementById('composeQuoteHeader').textContent =
+    `On ${origDate}, ${origFrom} wrote:`;
+  document.getElementById('composeQuoteBody').innerHTML = origHtml;
+
+  document.getElementById('composePanel').style.display          = 'flex';
+  document.getElementById('detailFrame').style.visibility        = 'hidden';
+  document.getElementById('sendBtn').disabled    = false;
+  document.getElementById('sendBtn').textContent = 'Send ✉';
+  document.getElementById('composeEditor').focus();
+}
+
+function cancelCompose() {
+  document.getElementById('composePanel').style.display          = 'none';
+  document.getElementById('detailFrame').style.visibility        = 'visible';
+  document.getElementById('composeEditor').innerHTML             = '';
+  document.getElementById('sendBtn').disabled    = false;
+  document.getElementById('sendBtn').textContent = 'Send ✉';
+}
+
+async function sendEmail() {
+  const to      = document.getElementById('composeTo').value.trim();
+  const cc      = document.getElementById('composeCC').value.trim();
+  const subject = document.getElementById('composeSubject').value.trim();
+  const newHtml = document.getElementById('composeEditor').innerHTML.trim();
+  const qHeader = esc(document.getElementById('composeQuoteHeader').textContent);
+  const qHtml   = document.getElementById('composeQuoteBody').innerHTML;
+
+  if (!to) { showToast('Please enter at least one recipient.', 'error'); return; }
+
+  const fullBody =
+    `<div style="font-family:Arial,sans-serif;font-size:14px;color:#202124;line-height:1.6">` +
+      (newHtml || '<br>') +
+    `</div>` +
+    `<br>` +
+    `<div style="border-left:3px solid #dadce0;padding-left:12px;margin-top:8px;color:#5f6368">` +
+      `<p style="font-size:12px;margin:0 0 8px">${qHeader}</p>` +
+      `<div style="font-size:13px">${qHtml}</div>` +
+    `</div>`;
+
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    const resp = await fetch('/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, cc, subject, body: fullBody }),
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      showToast('Email sent!', 'success');
+      cancelCompose();
+    } else {
+      showToast('Send failed: ' + result.error, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Send ✉';
+    }
+  } catch (e) {
+    showToast('Network error — please try again.', 'error');
+    btn.disabled = false;
+    btn.textContent = 'Send ✉';
+  }
+}
+
+/* ── Print ──────────────────────────── */
+function printEmail() {
+  const f = document.getElementById('detailFrame');
+  if (f.contentWindow) f.contentWindow.print();
+}
+
+/* ── Toast ──────────────────────────── */
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = type || '';
+  t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.display = 'none'; }, 3500);
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Auto-open first email
+const first = document.querySelector('.email-item');
+if (first) openEmail(first);
+</script>
+</body>
+</html>
