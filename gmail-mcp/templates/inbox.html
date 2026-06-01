@@ -118,6 +118,8 @@
     font-family: inherit; transition: background .1s, box-shadow .1s;
   }
   .action-btn:hover { background: #f1f3f4; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .action-btn-danger { color: #d93025; border-color: #f5c6c6; }
+  .action-btn-danger:hover { background: #fce8e6; }
 
   /* Body / iframe area */
   .detail-body-area { position: relative; flex: 1; overflow: hidden; }
@@ -342,6 +344,7 @@
           <button class="action-btn" onclick="compose('replyall')">↩↩ Reply All</button>
           <button class="action-btn" onclick="compose('forward')">↪ Forward</button>
           <button class="action-btn" onclick="printEmail()" title="Print email">🖨 Print</button>
+          <button class="action-btn action-btn-danger" onclick="trashEmail()" title="Move to Trash">🗑 Trash</button>
         </div>
       </div>
 
@@ -636,14 +639,68 @@ function printEmail() {
   if (f.contentWindow) f.contentWindow.print();
 }
 
-/* ── Toast ──────────────────────────── */
-function showToast(msg, type) {
+/* ── Toast (with optional Undo action) ── */
+function showToast(msg, type, undoFn) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className   = type || '';
+  t.className = type || '';
+  if (undoFn) {
+    t.innerHTML = `${esc(msg)} <span id="toastUndo" style="margin-left:16px;font-weight:600;cursor:pointer;text-decoration:underline">Undo</span>`;
+    document.getElementById('toastUndo').onclick = () => {
+      clearTimeout(t._timer);
+      t.style.display = 'none';
+      undoFn();
+    };
+  } else {
+    t.textContent = msg;
+  }
   t.style.display = 'block';
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => { t.style.display = 'none'; }, 3500);
+  t._timer = setTimeout(() => { t.style.display = 'none'; }, 5000);
+}
+
+/* ── Trash / Untrash ────────────────── */
+async function trashEmail() {
+  if (!currentId) return;
+  const trashId = currentId;
+
+  // Remove from list immediately (optimistic)
+  const el   = document.querySelector(`.email-item[data-id="${trashId}"]`);
+  const next = el && (el.nextElementSibling?.classList.contains('email-item')
+                        ? el.nextElementSibling
+                        : el.previousElementSibling?.classList.contains('email-item')
+                          ? el.previousElementSibling : null);
+  if (el) el.remove();
+
+  if (next) {
+    openEmail(next);
+  } else {
+    document.getElementById('detailContent').style.display = 'none';
+    document.getElementById('emptyState').style.display    = 'flex';
+    currentId = null; currentData = null;
+  }
+
+  showToast('Moved to Trash', 'success', () => untrashEmail(trashId, el, next));
+
+  const resp = await fetch(`/email/${trashId}/trash`, { method: 'POST' });
+  const result = await resp.json();
+  if (!result.ok) showToast('Could not trash: ' + result.error, 'error');
+}
+
+async function untrashEmail(id, el, prevNext) {
+  const resp = await fetch(`/email/${id}/untrash`, { method: 'POST' });
+  const result = await resp.json();
+  if (result.ok) {
+    // Re-insert the email item if we still have it
+    if (el) {
+      const listEl = document.querySelector('.email-list');
+      const header = listEl.querySelector('.email-list-header');
+      header.insertAdjacentElement('afterend', el);
+      openEmail(el);
+    }
+    showToast('Email restored to Inbox', 'success');
+  } else {
+    showToast('Could not undo: ' + result.error, 'error');
+  }
 }
 
 function esc(s) {

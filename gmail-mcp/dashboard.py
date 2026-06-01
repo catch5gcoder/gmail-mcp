@@ -310,6 +310,36 @@ def email_detail_json(message_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/email/<message_id>/trash", methods=["POST"])
+def trash_email(message_id):
+    global _service
+    for attempt in range(2):
+        try:
+            gmail.trash_email(get_service(), message_id)
+            with _cache_lock:
+                _email_cache.pop(message_id, None)
+            return jsonify({"ok": True})
+        except Exception as e:
+            if attempt == 0 and _is_transient(e):
+                _service = None
+                continue
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/email/<message_id>/untrash", methods=["POST"])
+def untrash_email(message_id):
+    global _service
+    for attempt in range(2):
+        try:
+            gmail.untrash_email(get_service(), message_id)
+            return jsonify({"ok": True})
+        except Exception as e:
+            if attempt == 0 and _is_transient(e):
+                _service = None
+                continue
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/send", methods=["POST"])
 def send():
     data = request.get_json()

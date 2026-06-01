@@ -10,9 +10,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 SCOPES = [
-    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",   # read + trash/label (replaces readonly)
     "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.labels",
 ]
 
 TOKEN_FILE = Path(__file__).parent / "token.json"
@@ -162,6 +161,16 @@ def list_labels(service) -> list[dict]:
         {"id": lbl["id"], "name": lbl["name"], "type": lbl.get("type", "")}
         for lbl in response.get("labels", [])
     ]
+
+
+def trash_email(service, message_id: str) -> dict:
+    result = service.users().messages().trash(userId="me", id=message_id).execute()
+    return {"id": result["id"]}
+
+
+def untrash_email(service, message_id: str) -> dict:
+    result = service.users().messages().untrash(userId="me", id=message_id).execute()
+    return {"id": result["id"]}
 
 
 def send_email(service, to: str, subject: str, body: str, cc: str = "", html: bool = False) -> dict:
