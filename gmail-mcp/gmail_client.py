@@ -56,12 +56,17 @@ def get_service(email: str | None = None):
     return build("gmail", "v1", credentials=creds)
 
 
-def add_account() -> str:
-    """Run OAuth flow for a new/additional account. Returns the email address."""
+def add_account(creds_file: Path | None = None) -> str:
+    """Run OAuth flow for a new/additional account. Returns the email address.
+
+    *creds_file* defaults to the shared creds.json; pass a per-account file
+    when each account has its own OAuth client credentials.
+    """
     TOKENS_DIR.mkdir(exist_ok=True)
-    if not CREDENTIALS_FILE.exists():
-        raise FileNotFoundError("creds.json not found.")
-    flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_FILE), SCOPES)
+    cf = Path(creds_file) if creds_file else CREDENTIALS_FILE
+    if not cf.exists():
+        raise FileNotFoundError(f"Credentials file not found: {cf}")
+    flow  = InstalledAppFlow.from_client_secrets_file(str(cf), SCOPES)
     creds = flow.run_local_server(port=0)
     svc   = build("gmail", "v1", credentials=creds)
     email = svc.users().getProfile(userId="me").execute().get("emailAddress", "unknown")
