@@ -8,7 +8,7 @@ import ssl
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request
@@ -186,15 +186,18 @@ def _format_from(from_str: str) -> str:
     return m.group(1).strip() if m else from_str
 
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
 def _format_date(date_str: str) -> str:
     for fmt in ("%a, %d %b %Y %H:%M:%S %z", "%a, %d %b %Y %H:%M:%S %Z",
                 "%d %b %Y %H:%M:%S %z", "%d %b %Y %H:%M:%S %Z"):
         try:
-            dt = datetime.strptime(date_str.strip(), fmt)
-            now = datetime.now(dt.tzinfo)
-            if dt.date() == now.date():
+            dt      = datetime.strptime(date_str.strip(), fmt).astimezone(IST)
+            now_ist = datetime.now(IST)
+            if dt.date() == now_ist.date():
                 return dt.strftime("%I:%M %p").lstrip("0")
-            if dt.year == now.year:
+            if dt.year == now_ist.year:
                 return dt.strftime("%b %d").replace(" 0", " ")
             return dt.strftime("%b %d, %Y")
         except ValueError:

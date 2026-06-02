@@ -802,13 +802,20 @@ function jsFmtFrom(s) {
 function jsFmtDate(s) {
   try {
     const d = new Date(s);
-    const now = new Date();
     if (isNaN(d)) return s;
-    if (d.toDateString() === now.toDateString())
-      return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-    if (d.getFullYear() === now.getFullYear())
-      return d.toLocaleDateString([], {month: 'short', day: 'numeric'});
-    return d.toLocaleDateString([], {month: 'short', day: 'numeric', year: 'numeric'});
+    // Always display in IST (UTC+5:30)
+    const IST_MS  = 5.5 * 3600000;
+    const toIST   = ms => new Date(ms + IST_MS);
+    const utcMs   = d.getTime() - d.getTimezoneOffset() * 60000;  // normalise to UTC
+    const ist     = toIST(utcMs);
+    const nowIst  = toIST(Date.now() - new Date().getTimezoneOffset() * 60000);
+
+    const sameDay = ist.toUTCString().slice(0,16) === nowIst.toUTCString().slice(0,16);
+    if (sameDay)
+      return ist.toLocaleTimeString('en-IN', {hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata'});
+    if (ist.getUTCFullYear() === nowIst.getUTCFullYear())
+      return d.toLocaleDateString('en-IN', {month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata'});
+    return d.toLocaleDateString('en-IN', {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Kolkata'});
   } catch(e) { return s; }
 }
 
