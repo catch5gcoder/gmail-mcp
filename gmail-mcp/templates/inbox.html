@@ -44,7 +44,31 @@
   .layout { display: flex; flex: 1; overflow: hidden; }
 
   /* ── Sidebar ─────────────────────────────── */
-  .sidebar { width: 220px; flex-shrink: 0; padding: 8px 0; overflow-y: auto; }
+  .sidebar { width: 220px; flex-shrink: 0; padding: 8px 0; overflow-y: auto; display: flex; flex-direction: column; }
+  .accounts-section { padding: 6px 12px 8px; flex-shrink: 0; border-bottom: 1px solid #e0e0e0; margin-bottom: 6px; }
+  .accounts-label { font-size: 10px; font-weight: 700; color: #5f6368; text-transform: uppercase; letter-spacing: .6px; padding: 0 4px 5px; }
+  .account-pill {
+    display: flex; align-items: center; gap: 8px; padding: 5px 6px;
+    border-radius: 8px; cursor: pointer; font-size: 12px; color: #202124;
+    margin-bottom: 2px; transition: background .1s;
+    border: none; background: transparent; width: 100%; text-align: left; font-family: inherit;
+  }
+  .account-pill:hover { background: #e8eaed; }
+  .account-pill.active { background: #e8f0fe; font-weight: 600; }
+  .account-avatar {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff;
+  }
+  .account-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .add-account-btn {
+    display: flex; align-items: center; gap: 8px; padding: 5px 6px;
+    border-radius: 8px; cursor: pointer; font-size: 12px; color: #1a73e8;
+    border: 1px dashed #1a73e8; background: transparent;
+    width: 100%; font-family: inherit; margin-top: 4px; transition: background .1s;
+  }
+  .add-account-btn:hover { background: #e8f0fe; }
+  .add-account-btn:disabled { opacity: .6; cursor: wait; }
   .sidebar a {
     display: flex; align-items: center; gap: 12px;
     padding: 6px 24px; border-radius: 0 16px 16px 0; margin-right: 16px;
@@ -256,6 +280,25 @@
 
   <!-- ── Sidebar ── -->
   <nav class="sidebar">
+
+    <!-- Account switcher -->
+    <div class="accounts-section">
+      <div class="accounts-label">Accounts</div>
+      {% for acct in accounts %}
+        {% set colors = ['#1a73e8','#e8710a','#1e8e3e','#d93025','#9334e6','#00838f'] %}
+        {% set color = colors[loop.index0 % colors|length] %}
+        <button class="account-pill {% if acct == active_account %}active{% endif %}"
+                onclick="switchAccount('{{ acct }}')"
+                title="{{ acct }}">
+          <span class="account-avatar" style="background:{{ color }}">{{ acct[0].upper() }}</span>
+          <span class="account-email">{{ acct }}</span>
+        </button>
+      {% endfor %}
+      <button class="add-account-btn" id="addAccountBtn" onclick="addAccount()">
+        <span style="font-size:16px;line-height:1">+</span> Add account
+      </button>
+    </div>
+
     {% for label in labels %}
       {% if label.id in ['INBOX','STARRED','SENT','DRAFTS'] %}
         <a href="/?label={{ label.id }}"
@@ -423,7 +466,38 @@
 <div id="toast"></div>
 
 <script>
-const USER_EMAIL = {{ user_email | tojson }};
+const USER_EMAIL     = {{ user_email | tojson }};
+const ACTIVE_ACCOUNT = {{ active_account | tojson }};
+
+/* ── Account management ─────────────── */
+function switchAccount(email) {
+  fetch(`/accounts/switch/${encodeURIComponent(email)}`, { method: 'POST' })
+    .then(() => { window.location.href = `/?account=${encodeURIComponent(email)}`; })
+    .catch(() => showToast('Could not switch account', 'error'));
+}
+
+async function addAccount() {
+  const btn = document.getElementById('addAccountBtn');
+  btn.disabled = true;
+  btn.textContent = 'Opening browser…';
+  showToast('Complete sign-in in the browser window that just opened…', '');
+  try {
+    const resp   = await fetch('/accounts/add', { method: 'POST' });
+    const result = await resp.json();
+    if (result.ok) {
+      showToast(`Added ${result.email}`, 'success');
+      window.location.href = `/?account=${encodeURIComponent(result.email)}`;
+    } else {
+      showToast('Could not add account: ' + result.error, 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<span style="font-size:16px;line-height:1">+</span> Add account';
+    }
+  } catch(e) {
+    showToast('Network error', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<span style="font-size:16px;line-height:1">+</span> Add account';
+  }
+}
 
 let currentId      = null;
 let currentData    = null;   // filled by /email/<id>/detail

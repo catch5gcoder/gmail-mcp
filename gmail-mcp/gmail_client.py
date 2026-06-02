@@ -14,29 +14,84 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
 ]
 
-TOKEN_FILE = Path(__file__).parent / "token.json"
+TOKENS_DIR       = Path(__file__).parent / "tokens"
+LEGACY_TOKEN     = Path(__file__).parent / "token.json"
 CREDENTIALS_FILE = Path(__file__).parent / "creds.json"
 
 
-def get_service():
+# ── Account management ────────────────────────────────────────────────────────
+
+def list_accounts() -> list[str]:
+    """Return sorted list of authenticated account email addresses."""
+    TOKENS_DIR.mkdir(exist_ok=True)
+    return sorted(f.stem for f in TOKENS_DIR.glob("*.json"))
+
+
+def get_service(email: str | None = None):
+    """Return a Gmail API service for *email*, or the first available account."""
+    TOKENS_DIR.mkdir(exist_ok=True)
+    _migrate_legacy()
+
+    if not email:
+        accounts = list_accounts()
+        if not accounts:
+            raise RuntimeError("No accounts configured. Add one via the dashboard.")
+        email = accounts[0]
+
+    token_file = TOKENS_DIR / f"{email}.json"
     creds = None
-    if TOKEN_FILE.exists():
-        creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
+    if token_file.exists():
+        creds = Credentials.from_authorized_user_file(str(token_file), SCOPES)
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
+            token_file.write_text(creds.to_json())
         else:
-            if not CREDENTIALS_FILE.exists():
-                raise FileNotFoundError(
-                    "credentials.json not found. Download it from Google Cloud Console "
-                    "(APIs & Services > Credentials > OAuth 2.0 Client IDs)."
-                )
-            flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_FILE), SCOPES)
-            creds = flow.run_local_server(port=0)
-        TOKEN_FILE.write_text(creds.to_json())
+            raise RuntimeError(
+                f"No valid credentials for {email}. "
+                "Re-authenticate via the dashboard or delete the token."
+            )
 
     return build("gmail", "v1", credentials=creds)
+
+
+def add_account() -> str:
+    """Run OAuth flow for a new/additional account. Returns the email address."""
+    TOKENS_DIR.mkdir(exist_ok=True)
+    if not CREDENTIALS_FILE.exists():
+        raise FileNotFoundError("creds.json not found.")
+    flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_FILE), SCOPES)
+    creds = flow.run_local_server(port=0)
+    svc   = build("gmail", "v1", credentials=creds)
+    email = svc.users().getProfile(userId="me").execute().get("emailAddress", "unknown")
+    (TOKENS_DIR / f"{email}.json").write_text(creds.to_json())
+    return email
+
+
+def remove_account(email: str) -> None:
+    """Delete the stored token for *email*."""
+    token = TOKENS_DIR / f"{email}.json"
+    if token.exists():
+        token.unlink()
+
+
+def _migrate_legacy() -> None:
+    """Move the old single-account token.json → tokens/{email}.json (runs once)."""
+    if not LEGACY_TOKEN.exists() or list_accounts():
+        return
+    try:
+        creds = Credentials.from_authorized_user_file(str(LEGACY_TOKEN), SCOPES)
+        if creds and (creds.valid or (creds.expired and creds.refresh_token)):
+            if creds.expired:
+                creds.refresh(Request())
+            svc   = build("gmail", "v1", credentials=creds)
+            email = svc.users().getProfile(userId="me").execute().get("emailAddress", "")
+            if email:
+                (TOKENS_DIR / f"{email}.json").write_text(creds.to_json())
+        LEGACY_TOKEN.rename(LEGACY_TOKEN.with_suffix(".json.bak"))
+    except Exception:
+        pass
 
 
 def _b64decode(data: str) -> bytes:

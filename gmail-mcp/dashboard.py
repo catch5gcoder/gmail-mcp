@@ -18,18 +18,19 @@ import gmail_client as gmail
 
 app = Flask(__name__)
 
-_service = None
-_profile = None
-_email_cache: dict = {}          # {message_id: (timestamp, email_dict)}
-_cache_lock = threading.Lock()   # protects concurrent reads/writes to _email_cache
-CACHE_TTL = 300
+_services: dict        = {}      # {email: google api service}
+_profiles: dict        = {}      # {email: {email, name}}
+_active_account: str   = ""      # currently selected account email
+_email_cache: dict     = {}      # {(account, message_id): (ts, email_dict)}
+_cache_lock            = threading.Lock()
+CACHE_TTL              = 300
 
 # SSE push notification state
-_subscribers: list[queue.Queue] = []   # one Queue per connected browser tab
-_sub_lock = threading.Lock()
+_subscribers: list[queue.Queue] = []
+_sub_lock    = threading.Lock()
 _poller_started = False
-_poller_lock = threading.Lock()
-POLL_INTERVAL = 30  # seconds between Gmail inbox checks
+_poller_lock    = threading.Lock()
+POLL_INTERVAL   = 30
 
 PRIORITY_LABELS = ["INBOX", "STARRED", "SENT", "DRAFTS", "SPAM", "TRASH"]
 LABEL_ICONS = {
@@ -38,22 +39,7 @@ LABEL_ICONS = {
 }
 
 
-def get_service():
-    global _service
-    if _service is None:
-        _service = gmail.get_service()
-    return _service
-
-
-def get_profile():
-    global _profile
-    if _profile is None:
-        _profile = gmail.get_profile(get_service())
-    return _profile
-
-
 def _is_transient(e: Exception) -> bool:
-    """True for SSL / stale-connection errors that go away with a fresh connection."""
     if isinstance(e, ssl.SSLError):
         return True
     msg = str(e).lower()
@@ -61,25 +47,49 @@ def _is_transient(e: Exception) -> bool:
                                    "broken pipe", "remote end closed", "eof occurred"))
 
 
-def get_email_cached(message_id: str) -> dict:
-    global _service
+def _active() -> str:
+    """Return the current active account email, defaulting to first available."""
+    global _active_account
+    if not _active_account:
+        accounts = gmail.list_accounts()
+        _active_account = accounts[0] if accounts else ""
+    return _active_account
+
+
+def get_service(email: str | None = None) -> object:
+    """Return (cached) Gmail service for *email* (defaults to active account)."""
+    acct = email or _active()
+    if acct not in _services:
+        _services[acct] = gmail.get_service(acct)
+    return _services[acct]
+
+
+def get_profile(email: str | None = None) -> dict:
+    acct = email or _active()
+    if acct not in _profiles:
+        _profiles[acct] = gmail.get_profile(get_service(acct))
+    return _profiles[acct]
+
+
+def get_email_cached(message_id: str, email: str | None = None) -> dict:
+    acct = email or _active()
+    key  = (acct, message_id)
     with _cache_lock:
-        entry = _email_cache.get(message_id)
+        entry = _email_cache.get(key)
     if entry:
         ts, data = entry
         if time.time() - ts < CACHE_TTL:
             return data
 
-    # Retry once on transient SSL / connection errors
     for attempt in range(2):
         try:
-            data = gmail.get_email(get_service(), message_id)
+            data = gmail.get_email(get_service(acct), message_id)
             with _cache_lock:
-                _email_cache[message_id] = (time.time(), data)
+                _email_cache[key] = (time.time(), data)
             return data
         except Exception as e:
             if attempt == 0 and _is_transient(e):
-                _service = None   # force a fresh connection next attempt
+                _services.pop(acct, None)
                 continue
             raise
 
@@ -98,27 +108,27 @@ def _broadcast(event: dict) -> None:
 
 
 def _poll_for_new_emails() -> None:
-    """Background thread: check inbox every POLL_INTERVAL seconds and push new arrivals."""
-    global _service
-    last_ids: set[str] = set()
-    initialized = False
+    """Background thread: check every account's inbox and push new arrivals."""
+    last_ids: dict[str, set[str]] = {}   # {account: set of message IDs}
 
     while True:
-        try:
-            emails = gmail.list_emails(get_service(), label_ids=["INBOX"], max_results=15)
-            current_ids = {e["id"] for e in emails}
+        for acct in gmail.list_accounts():
+            try:
+                emails      = gmail.list_emails(get_service(acct), label_ids=["INBOX"], max_results=15)
+                current_ids = {e["id"] for e in emails}
+                prev_ids    = last_ids.get(acct)
 
-            if initialized:
-                new_ids = current_ids - last_ids
-                if new_ids:
-                    new_emails = [e for e in emails if e["id"] in new_ids]
-                    _broadcast({"type": "new_emails", "count": len(new_emails), "emails": new_emails})
+                if prev_ids is not None:
+                    new_ids = current_ids - prev_ids
+                    if new_ids:
+                        new_emails = [e for e in emails if e["id"] in new_ids]
+                        _broadcast({"type": "new_emails", "count": len(new_emails),
+                                    "emails": new_emails, "account": acct})
 
-            last_ids = current_ids
-            initialized = True
-        except Exception as e:
-            if _is_transient(e):
-                _service = None  # force reconnect next iteration
+                last_ids[acct] = current_ids
+            except Exception as e:
+                if _is_transient(e):
+                    _services.pop(acct, None)
 
         time.sleep(POLL_INTERVAL)
 
@@ -215,36 +225,38 @@ def _sidebar_labels():
     return priority + user
 
 
-def _list_emails_with_retry(label: str, query: str) -> list:
-    global _service
+def _list_emails_with_retry(label: str, query: str, acct: str) -> list:
     for attempt in range(2):
         try:
             return gmail.list_emails(
-                get_service(),
+                get_service(acct),
                 label_ids=[label] if not query else None,
                 max_results=25,
                 query=query,
             )
         except Exception as e:
             if attempt == 0 and _is_transient(e):
-                _service = None
+                _services.pop(acct, None)
                 continue
             raise
 
 
 @app.route("/")
 def index():
+    global _active_account
     label = request.args.get("label", "INBOX")
     query = request.args.get("q", "")
+    acct  = request.args.get("account", "") or _active()
+    _active_account = acct
     try:
-        emails = _list_emails_with_retry(label, query)
-        sidebar = _sidebar_labels()
-        profile = get_profile()
+        emails   = _list_emails_with_retry(label, query, acct)
+        sidebar  = _sidebar_labels()
+        profile  = get_profile(acct)
+        accounts = gmail.list_accounts()
     except Exception as e:
         return (
             f"<h3 style='font-family:Arial;padding:24px;color:#d93025'>"
-            f"Could not load inbox: {e}<br>"
-            f"<a href='/'>Retry</a></h3>"
+            f"Could not load inbox: {e}<br><a href='/'>Retry</a></h3>"
         ), 500
     return render_template(
         "inbox.html",
@@ -254,13 +266,55 @@ def index():
         query=query,
         label_icons=LABEL_ICONS,
         user_email=profile["email"],
+        accounts=accounts,
+        active_account=acct,
     )
+
+
+# ── Account management ──────────────────────────────────────────────────────
+
+@app.route("/accounts/add", methods=["POST"])
+def accounts_add():
+    """Blocking: opens browser OAuth, saves token, returns new account email."""
+    try:
+        email = gmail.add_account()
+        _active_account_set(email)
+        return jsonify({"ok": True, "email": email})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/accounts/switch/<email>", methods=["POST"])
+def accounts_switch(email):
+    global _active_account
+    if email not in gmail.list_accounts():
+        return jsonify({"ok": False, "error": "Unknown account"}), 400
+    _active_account = email
+    return jsonify({"ok": True})
+
+
+@app.route("/accounts/remove/<email>", methods=["POST"])
+def accounts_remove(email):
+    global _active_account
+    gmail.remove_account(email)
+    _services.pop(email, None)
+    _profiles.pop(email, None)
+    if _active_account == email:
+        remaining = gmail.list_accounts()
+        _active_account = remaining[0] if remaining else ""
+    return jsonify({"ok": True})
+
+
+def _active_account_set(email: str) -> None:
+    global _active_account
+    _active_account = email
 
 
 @app.route("/email/<message_id>/body")
 def email_body(message_id):
+    acct = request.args.get("account", "") or _active()
     try:
-        email = get_email_cached(message_id)
+        email = get_email_cached(message_id, acct)
         html = email.get("html_body", "")
         if html:
             if "<head>" in html.lower():
@@ -289,8 +343,9 @@ def email_body(message_id):
 
 @app.route("/email/<message_id>/detail")
 def email_detail_json(message_id):
+    acct = request.args.get("account", "") or _active()
     try:
-        email = get_email_cached(message_id)
+        email = get_email_cached(message_id, acct)
         attachments = [
             {**att, "size_str": _format_size(att.get("size", 0))}
             for att in email.get("attachments", [])
@@ -312,30 +367,30 @@ def email_detail_json(message_id):
 
 @app.route("/email/<message_id>/trash", methods=["POST"])
 def trash_email(message_id):
-    global _service
+    acct = request.args.get("account", "") or _active()
     for attempt in range(2):
         try:
-            gmail.trash_email(get_service(), message_id)
+            gmail.trash_email(get_service(acct), message_id)
             with _cache_lock:
-                _email_cache.pop(message_id, None)
+                _email_cache.pop((acct, message_id), None)
             return jsonify({"ok": True})
         except Exception as e:
             if attempt == 0 and _is_transient(e):
-                _service = None
+                _services.pop(acct, None)
                 continue
             return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/email/<message_id>/untrash", methods=["POST"])
 def untrash_email(message_id):
-    global _service
+    acct = request.args.get("account", "") or _active()
     for attempt in range(2):
         try:
-            gmail.untrash_email(get_service(), message_id)
+            gmail.untrash_email(get_service(acct), message_id)
             return jsonify({"ok": True})
         except Exception as e:
             if attempt == 0 and _is_transient(e):
-                _service = None
+                _services.pop(acct, None)
                 continue
             return jsonify({"ok": False, "error": str(e)}), 500
 
