@@ -35,7 +35,10 @@ run("netsh interface portproxy add v4tov4 listenport=80 listenaddress=127.0.0.1 
 # 3. Proxy bypass
 run('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyOverride /t REG_SZ /d "emailbox.local;<local>" /f')
 
-# 4. Install Windows Service (replaces watchdog + scheduled tasks)
+# 4. Store real python.exe path for the service (sys.executable = python.exe here)
+(HERE / "python_path.txt").write_text(sys.executable)
+
+# 4b. Install Windows Service (replaces watchdog + scheduled tasks)
 run(f'"{sys.executable}" "{HERE / "service.py"}" stop')
 run(f'"{sys.executable}" "{HERE / "service.py"}" remove')
 time.sleep(1)

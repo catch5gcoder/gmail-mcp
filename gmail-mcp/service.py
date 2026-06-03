@@ -8,7 +8,10 @@ from pathlib import Path
 import win32serviceutil, win32service, win32event
 
 HERE    = Path(__file__).resolve().parent
-PYTHON  = sys.executable   # absolute path baked in at install time
+# sys.executable in service context is pythonservice.exe, not python.exe.
+# setup.py writes the real python.exe path to python_path.txt.
+_path_file = HERE / "python_path.txt"
+PYTHON = _path_file.read_text().strip() if _path_file.exists() else str(Path(sys.executable).parent / "python.exe")
 
 
 class GmailDashboardService(win32serviceutil.ServiceFramework):
