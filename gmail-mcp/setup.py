@@ -45,7 +45,7 @@ run(f'schtasks /delete /tn "GmailDashboard" /f')
 run(f'schtasks /create /tn "GmailDashboard" /tr "wscript.exe \\"{vbs}\\"" /sc onlogon /rl highest /f')
 
 # 6. Start server now
-subprocess.Popen([sys.executable, str(HERE / "dashboard.py")], cwd=str(HERE),
+subprocess.Popen([sys.executable, str(HERE / "watchdog.py")], cwd=str(HERE),
                  creationflags=subprocess.CREATE_NO_WINDOW)
 
 print("Done. Open http://emailbox.local")

@@ -60,5 +60,5 @@ End If
 ' 5. Kill stale server then start fresh
 shell.Run "cmd /c taskkill /f /im python.exe >nul 2>&1", 0, True
 If pyPath <> "" Then
-    shell.Run """" & pyPath & """ dashboard.py", 0, False
+    shell.Run """" & pyPath & """ watchdog.py", 0, False
 End If
