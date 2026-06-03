@@ -483,9 +483,7 @@ const ACTIVE_ACCOUNT = {{ active_account | tojson }};
 
 /* ── Account management ─────────────── */
 function switchAccount(email) {
-  fetch(`/accounts/switch/${encodeURIComponent(email)}`, { method: 'POST' })
-    .then(() => { window.location.href = `/?account=${encodeURIComponent(email)}`; })
-    .catch(() => showToast('Could not switch account', 'error'));
+  window.location.href = `/?account=${encodeURIComponent(email)}`;
 }
 
 async function addAccount() {
