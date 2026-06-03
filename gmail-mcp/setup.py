@@ -35,24 +35,14 @@ run("netsh interface portproxy add v4tov4 listenport=80 listenaddress=127.0.0.1 
 # 3. Proxy bypass
 run('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyOverride /t REG_SZ /d "emailbox.local;<local>" /f')
 
-# 4. Kill stale server
-run("taskkill /f /im python.exe")
+# 4. Install Windows Service (replaces watchdog + scheduled tasks)
+run(f'"{sys.executable}" "{HERE / "service.py"}" stop')
+run(f'"{sys.executable}" "{HERE / "service.py"}" remove')
 time.sleep(1)
-
-# 5a. SYSTEM startup task — restores portproxy at every boot (runs before login, no UAC ever)
-run('schtasks /delete /tn "GmailPortProxy" /f')
-run('schtasks /create /tn "GmailPortProxy" '
-    '/tr "netsh interface portproxy add v4tov4 listenport=80 listenaddress=127.0.0.1 connectport=5000 connectaddress=127.0.0.1" '
-    '/sc onstart /ru SYSTEM /f')
-
-# 5b. User login task — starts watchdog (Flask)
-vbs = str(HERE / "run_server.vbs")
-run(f'schtasks /delete /tn "GmailDashboard" /f')
-run(f'schtasks /create /tn "GmailDashboard" /tr "wscript.exe \\"{vbs}\\"" /sc onlogon /rl highest /f')
-
-# 6. Start server now
-subprocess.Popen([sys.executable, str(HERE / "watchdog.py")], cwd=str(HERE),
-                 creationflags=subprocess.CREATE_NO_WINDOW)
+run(f'"{sys.executable}" "{HERE / "service.py"}" --startup auto install')
+# Restart on failure: 3 attempts, 5-second delay each
+run('sc failure GmailDashboard reset= 86400 actions= restart/5000/restart/5000/restart/5000')
+run('sc start GmailDashboard')
 
 print("Done. Open http://emailbox.local")
 input("Press Enter to close...")
