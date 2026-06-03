@@ -39,7 +39,13 @@ run('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Setti
 run("taskkill /f /im python.exe")
 time.sleep(1)
 
-# 5. Scheduled task (auto-start on login)
+# 5a. SYSTEM startup task — restores portproxy at every boot (runs before login, no UAC ever)
+run('schtasks /delete /tn "GmailPortProxy" /f')
+run('schtasks /create /tn "GmailPortProxy" '
+    '/tr "netsh interface portproxy add v4tov4 listenport=80 listenaddress=127.0.0.1 connectport=5000 connectaddress=127.0.0.1" '
+    '/sc onstart /ru SYSTEM /f')
+
+# 5b. User login task — starts watchdog (Flask)
 vbs = str(HERE / "run_server.vbs")
 run(f'schtasks /delete /tn "GmailDashboard" /f')
 run(f'schtasks /create /tn "GmailDashboard" /tr "wscript.exe \\"{vbs}\\"" /sc onlogon /rl highest /f')
