@@ -103,7 +103,8 @@
     transition: opacity .15s, background .15s; line-height: 1;
     z-index: 2;
   }
-  .email-item:hover .ei-trash { opacity: 1; pointer-events: auto; }
+  .email-item:hover .ei-trash,
+  .email-item.ei-hover .ei-trash { opacity: 1; pointer-events: auto; }
   .ei-trash:hover { background: #fce8e6; color: #d93025; }
   .email-item.unread .ei-from,
   .email-item.unread .ei-subject { font-weight: 700; color: #202124; }
@@ -820,6 +821,13 @@ function esc(s) {
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+/* ── Trash icon hover (JS fallback for scroll-container CSS hover quirks) ── */
+function bindTrashHover(el) {
+  el.addEventListener('mouseenter', () => el.classList.add('ei-hover'));
+  el.addEventListener('mouseleave', () => el.classList.remove('ei-hover'));
+}
+document.querySelectorAll('.email-item').forEach(bindTrashHover);
+
 // Auto-open first email
 const first = document.querySelector('.email-item');
 if (first) openEmail(first);
@@ -889,6 +897,7 @@ function prependEmails(emails) {
       <div class="ei-subject">${esc(email.subject || '')}</div>
       <div class="ei-snippet">${esc(email.snippet  || '')}</div>
       <button class="ei-trash" onclick="trashFromList(event,'${esc(email.id)}')" title="Move to Trash">🗑</button>`;
+    bindTrashHover(el);
     header.insertAdjacentElement('afterend', el);
   });
 
