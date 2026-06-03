@@ -91,10 +91,18 @@
   }
   .email-item {
     padding: 10px 16px; border-bottom: 1px solid #f1f3f4;
-    cursor: pointer; transition: background .1s;
+    cursor: pointer; transition: background .1s; position: relative;
   }
   .email-item:hover { background: #f2f6fc; }
   .email-item.active { background: #e8f0fe; border-left: 3px solid #1a73e8; padding-left: 13px; }
+  .ei-trash {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; font-size: 15px;
+    color: #5f6368; padding: 4px 7px; border-radius: 4px;
+    opacity: 0; transition: opacity .15s, background .15s; line-height: 1;
+  }
+  .email-item:hover .ei-trash { opacity: 1; }
+  .ei-trash:hover { background: #fce8e6; color: #d93025; }
   .email-item.unread .ei-from,
   .email-item.unread .ei-subject { font-weight: 700; color: #202124; }
   .ei-row1 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 2px; }
@@ -359,6 +367,7 @@
           </div>
           <div class="ei-subject">{{ email.subject }}</div>
           <div class="ei-snippet">{{ email.snippet }}</div>
+          <button class="ei-trash" onclick="trashFromList(event,'{{ email.id }}')" title="Move to Trash">🗑</button>
         </div>
       {% endfor %}
     {% else %}
@@ -732,6 +741,32 @@ function showToast(msg, type, undoFn) {
   t._timer = setTimeout(() => { t.style.display = 'none'; }, 5000);
 }
 
+/* ── Trash from list (inline button) ── */
+async function trashFromList(event, id) {
+  event.stopPropagation();
+  const el   = document.querySelector(`.email-item[data-id="${id}"]`);
+  const next = el && (el.nextElementSibling?.classList.contains('email-item')
+                        ? el.nextElementSibling
+                        : el.previousElementSibling?.classList.contains('email-item')
+                          ? el.previousElementSibling : null);
+  if (el) el.remove();
+
+  if (currentId === id) {
+    if (next) {
+      openEmail(next);
+    } else {
+      document.getElementById('detailContent').style.display = 'none';
+      document.getElementById('emptyState').style.display    = 'flex';
+      currentId = null; currentData = null;
+    }
+  }
+
+  showToast('Moved to Trash', 'success', () => untrashEmail(id, el, next));
+  const resp   = await fetch(`/email/${id}/trash`, { method: 'POST' });
+  const result = await resp.json();
+  if (!result.ok) showToast('Could not trash: ' + result.error, 'error');
+}
+
 /* ── Trash / Untrash ────────────────── */
 async function trashEmail() {
   if (!currentId) return;
@@ -850,7 +885,8 @@ function prependEmails(emails) {
         <span class="ei-date">${esc(jsFmtDate(email.date || ''))}</span>
       </div>
       <div class="ei-subject">${esc(email.subject || '')}</div>
-      <div class="ei-snippet">${esc(email.snippet  || '')}</div>`;
+      <div class="ei-snippet">${esc(email.snippet  || '')}</div>
+      <button class="ei-trash" onclick="trashFromList(event,'${esc(email.id)}')" title="Move to Trash">🗑</button>`;
     header.insertAdjacentElement('afterend', el);
   });
 
