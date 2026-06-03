@@ -96,12 +96,14 @@
   .email-item:hover { background: #f2f6fc; }
   .email-item.active { background: #e8f0fe; border-left: 3px solid #1a73e8; padding-left: 13px; }
   .ei-trash {
-    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-    background: none; border: none; cursor: pointer; font-size: 15px;
-    color: #5f6368; padding: 4px 7px; border-radius: 4px;
-    opacity: 0; transition: opacity .15s, background .15s; line-height: 1;
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; font-size: 16px;
+    color: #5f6368; padding: 4px 8px; border-radius: 4px;
+    opacity: 0; pointer-events: none;
+    transition: opacity .15s, background .15s; line-height: 1;
+    z-index: 2;
   }
-  .email-item:hover .ei-trash { opacity: 1; }
+  .email-item:hover .ei-trash { opacity: 1; pointer-events: auto; }
   .ei-trash:hover { background: #fce8e6; color: #d93025; }
   .email-item.unread .ei-from,
   .email-item.unread .ei-subject { font-weight: 700; color: #202124; }
