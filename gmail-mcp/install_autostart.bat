@@ -11,6 +11,21 @@ if errorlevel 1 (
     echo 127.0.0.1 gmail.local >> "C:\Windows\System32\drivers\etc\hosts"
 )
 
+:: Add gmail.local to Windows proxy bypass list so corporate proxy doesn't intercept it
+for /f "tokens=2*" %%a in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyOverride 2^>nul') do set BYPASS=%%b
+echo %BYPASS% | findstr /C:"gmail.local" >nul 2>&1
+if errorlevel 1 (
+    if "%BYPASS%"=="" (
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyOverride /t REG_SZ /d "gmail.local;<local>" /f >nul 2>&1
+    ) else (
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyOverride /t REG_SZ /d "%BYPASS%;gmail.local" /f >nul 2>&1
+    )
+)
+
+:: Kill any stale Python dashboard processes
+taskkill /f /im python.exe >nul 2>&1
+timeout /t 1 >nul
+
 :: Remove existing task if present
 schtasks /delete /tn "%TASK_NAME%" /f >nul 2>&1
 
@@ -25,8 +40,10 @@ echo.
 echo  Done! Gmail Dashboard will start silently at every login.
 echo  No window will pop up - just open http://gmail.local
 echo.
-echo  Running it now for this session...
+echo  Starting server now...
 wscript.exe "%VBS_PATH%"
+timeout /t 3 >nul
 echo  Server started. Open http://gmail.local
+echo  (If gmail.local still fails, try http://127.0.0.1:5000)
 echo.
 pause
