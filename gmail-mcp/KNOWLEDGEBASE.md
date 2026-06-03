@@ -101,4 +101,4 @@ Portproxy resets on reboot. The Registry Run key starts `watchdog.py` automatica
 
 **Permanent fix:** Run `setup.py` once after reboot (accept UAC). Or access via `http://localhost:5000` which always works without portproxy.
 
-**TODO:** Create a startup Task (SYSTEM account) to re-run portproxy at boot — this would make it fully zero-touch after a reboot.
+**Fixed:** `GmailPortProxy` scheduled task runs as SYSTEM at boot, restoring portproxy before any user logs in. Fully zero-touch.
