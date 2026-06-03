@@ -416,5 +416,5 @@ def send():
 
 
 if __name__ == "__main__":
-    print("\n  Gmail Dashboard → http://emailbox.local  (or http://localhost:5000)\n")
+    print("\n  Gmail Dashboard -> http://emailbox.local  (or http://localhost:5000)\n")
     app.run(debug=False, host="127.0.0.1", port=5000)
