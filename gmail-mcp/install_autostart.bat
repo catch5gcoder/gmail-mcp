@@ -5,20 +5,21 @@
 set TASK_NAME=GmailDashboard
 set VBS_PATH=%~dp0run_server.vbs
 
-:: Add hosts entry if missing
-findstr /C:"gmail.local" "C:\Windows\System32\drivers\etc\hosts" >nul 2>&1
+:: Update hosts file
+powershell -Command "(Get-Content 'C:\Windows\System32\drivers\etc\hosts') -replace '127\.0\.0\.1\s+gmail\.local.*', '' | Set-Content 'C:\Windows\System32\drivers\etc\hosts'"
+findstr /C:"emailbox.local" "C:\Windows\System32\drivers\etc\hosts" >nul 2>&1
 if errorlevel 1 (
-    echo 127.0.0.1 gmail.local >> "C:\Windows\System32\drivers\etc\hosts"
+    echo 127.0.0.1 emailbox.local >> "C:\Windows\System32\drivers\etc\hosts"
 )
 
-:: Add gmail.local to Windows proxy bypass list so corporate proxy doesn't intercept it
+:: Add emailbox.local to Windows proxy bypass list so corporate proxy doesn't intercept it
 for /f "tokens=2*" %%a in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyOverride 2^>nul') do set BYPASS=%%b
-echo %BYPASS% | findstr /C:"gmail.local" >nul 2>&1
+echo %BYPASS% | findstr /C:"emailbox.local" >nul 2>&1
 if errorlevel 1 (
     if "%BYPASS%"=="" (
-        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyOverride /t REG_SZ /d "gmail.local;<local>" /f >nul 2>&1
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyOverride /t REG_SZ /d "emailbox.local;<local>" /f >nul 2>&1
     ) else (
-        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyOverride /t REG_SZ /d "%BYPASS%;gmail.local" /f >nul 2>&1
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyOverride /t REG_SZ /d "%BYPASS%;emailbox.local" /f >nul 2>&1
     )
 )
 
@@ -42,12 +43,12 @@ schtasks /create /tn "%TASK_NAME%" ^
 
 echo.
 echo  Done! Gmail Dashboard will start silently at every login.
-echo  No window will pop up - just open http://gmail.local
+echo  No window will pop up - just open http://emailbox.local
 echo.
 echo  Starting server now...
 wscript.exe "%VBS_PATH%"
 timeout /t 3 >nul
-echo  Server started. Open http://gmail.local
-echo  (If gmail.local still fails, try http://127.0.0.1:5000)
+echo  Server started. Open http://emailbox.local
+echo  (If emailbox.local still fails, try http://127.0.0.1:5000)
 echo.
 pause
