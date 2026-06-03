@@ -1,22 +1,32 @@
 @echo off
-:: Registers Gmail Dashboard to start automatically at Windows login
-:: Must be run as Administrator (launch_gmail.vbs handles this)
+:: Registers Gmail Dashboard to start silently at Windows login (no window popup)
+:: Must be run as Administrator
 
 set TASK_NAME=GmailDashboard
-set BAT_PATH=%~dp0start_gmail.bat
+set VBS_PATH=%~dp0run_server.vbs
+
+:: Add hosts entry if missing
+findstr /C:"gmail.local" "C:\Windows\System32\drivers\etc\hosts" >nul 2>&1
+if errorlevel 1 (
+    echo 127.0.0.1 gmail.local >> "C:\Windows\System32\drivers\etc\hosts"
+)
 
 :: Remove existing task if present
 schtasks /delete /tn "%TASK_NAME%" /f >nul 2>&1
 
-:: Create task: run at login, with highest privileges, hidden window
+:: Create task: run silently at login with admin rights, no window
 schtasks /create /tn "%TASK_NAME%" ^
-  /tr "cmd.exe /c \"%BAT_PATH%\"" ^
+  /tr "wscript.exe \"%VBS_PATH%\"" ^
   /sc onlogon ^
   /rl highest ^
   /f >nul 2>&1
 
 echo.
-echo  Gmail Dashboard will now start automatically at login.
-echo  To start it now without rebooting, double-click launch_gmail.vbs
+echo  Done! Gmail Dashboard will start silently at every login.
+echo  No window will pop up - just open http://gmail.local
+echo.
+echo  Running it now for this session...
+wscript.exe "%VBS_PATH%"
+echo  Server started. Open http://gmail.local
 echo.
 pause
