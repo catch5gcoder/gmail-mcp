@@ -22,6 +22,10 @@ if errorlevel 1 (
     )
 )
 
+:: Port proxy: forward port 80 → 5000 (persists until reboot, no per-run admin needed)
+netsh interface portproxy delete v4tov4 listenport=80 listenaddress=127.0.0.1 >nul 2>&1
+netsh interface portproxy add v4tov4 listenport=80 listenaddress=127.0.0.1 connectport=5000 connectaddress=127.0.0.1 >nul 2>&1
+
 :: Kill any stale Python dashboard processes
 taskkill /f /im python.exe >nul 2>&1
 timeout /t 1 >nul

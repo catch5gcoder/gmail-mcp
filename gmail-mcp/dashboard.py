@@ -415,48 +415,6 @@ def send():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-def _start_port_forwarder(listen_port: int = 80, target_port: int = 5000) -> None:
-    """Forward port 80 → 5000 so http://gmail.local works without a browser port suffix.
-    Silently does nothing if port 80 is unavailable (e.g. no admin rights)."""
-    import socket
-
-    def _pipe(src: socket.socket, dst: socket.socket) -> None:
-        try:
-            while True:
-                chunk = src.recv(8192)
-                if not chunk:
-                    break
-                dst.sendall(chunk)
-        except OSError:
-            pass
-        finally:
-            try: src.close()
-            except OSError: pass
-            try: dst.close()
-            except OSError: pass
-
-    def _proxy() -> None:
-        try:
-            srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            srv.bind(("127.0.0.1", listen_port))
-            srv.listen(50)
-        except OSError:
-            return  # port 80 unavailable — gmail.local:5000 still works
-        print(f"  Port forwarder active: http://gmail.local → localhost:{target_port}")
-        while True:
-            try:
-                client, _ = srv.accept()
-                backend = socket.create_connection(("127.0.0.1", target_port), timeout=5)
-                threading.Thread(target=_pipe, args=(client, backend), daemon=True).start()
-                threading.Thread(target=_pipe, args=(backend, client), daemon=True).start()
-            except OSError:
-                pass
-
-    threading.Thread(target=_proxy, daemon=True, name="port-forwarder").start()
-
-
 if __name__ == "__main__":
-    _start_port_forwarder(listen_port=80, target_port=5000)
     print("\n  Gmail Dashboard → http://gmail.local  (or http://localhost:5000)\n")
     app.run(debug=False, host="127.0.0.1", port=5000)
